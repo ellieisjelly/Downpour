@@ -3,6 +3,7 @@ package io.github.haykam821.downpour.game.phase;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import io.github.haykam821.downpour.Main;
@@ -18,7 +19,6 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.EntityHitResult;
@@ -26,19 +26,21 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameMode;
-import xyz.nucleoid.plasmid.game.GameActivity;
-import xyz.nucleoid.plasmid.game.GameCloseReason;
-import xyz.nucleoid.plasmid.game.GameSpace;
-import xyz.nucleoid.plasmid.game.common.GlobalWidgets;
-import xyz.nucleoid.plasmid.game.event.GameActivityEvents;
-import xyz.nucleoid.plasmid.game.event.GamePlayerEvents;
-import xyz.nucleoid.plasmid.game.player.PlayerOffer;
-import xyz.nucleoid.plasmid.game.player.PlayerOfferResult;
-import xyz.nucleoid.plasmid.game.rule.GameRuleType;
-import xyz.nucleoid.plasmid.game.stats.GameStatisticBundle;
-import xyz.nucleoid.plasmid.game.stats.StatisticKey;
-import xyz.nucleoid.plasmid.game.stats.StatisticKeys;
-import xyz.nucleoid.plasmid.util.PlayerRef;
+import xyz.nucleoid.plasmid.api.game.GameActivity;
+import xyz.nucleoid.plasmid.api.game.GameCloseReason;
+import xyz.nucleoid.plasmid.api.game.GameSpace;
+import xyz.nucleoid.plasmid.api.game.common.GlobalWidgets;
+import xyz.nucleoid.plasmid.api.game.event.GameActivityEvents;
+import xyz.nucleoid.plasmid.api.game.event.GamePlayerEvents;
+import xyz.nucleoid.plasmid.api.game.player.JoinAcceptor;
+import xyz.nucleoid.plasmid.api.game.player.JoinAcceptorResult;
+import xyz.nucleoid.plasmid.api.game.player.JoinOffer;
+import xyz.nucleoid.plasmid.api.game.rule.GameRuleType;
+import xyz.nucleoid.plasmid.api.game.stats.GameStatisticBundle;
+import xyz.nucleoid.plasmid.api.game.stats.StatisticKey;
+import xyz.nucleoid.plasmid.api.game.stats.StatisticKeys;
+import xyz.nucleoid.plasmid.api.util.PlayerRef;
+import xyz.nucleoid.stimuli.event.EventResult;
 import xyz.nucleoid.stimuli.event.player.PlayerAttackEntityEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerDamageEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerDeathEvent;
@@ -85,7 +87,7 @@ public class DownpourActivePhase {
 		gameSpace.setActivity(activity -> {
 			GlobalWidgets widgets = GlobalWidgets.addTo(activity);
 
-			List<PlayerRef> players = gameSpace.getPlayers().stream().map(PlayerRef::of).collect(Collectors.toList());
+			List<PlayerRef> players = gameSpace.getPlayers().participants().stream().map(PlayerRef::of).collect(Collectors.toList());
 			Collections.shuffle(players);
 
 			DownpourActivePhase phase = new DownpourActivePhase(gameSpace, world, map, config, players, widgets);
@@ -95,7 +97,8 @@ public class DownpourActivePhase {
 			// Listeners
 			activity.listen(GameActivityEvents.ENABLE, phase::enable);
 			activity.listen(GameActivityEvents.TICK, phase::tick);
-			activity.listen(GamePlayerEvents.OFFER, phase::offerPlayer);
+			activity.listen(GamePlayerEvents.ACCEPT, phase::onAcceptPlayers);
+			activity.listen(GamePlayerEvents.OFFER, JoinOffer::acceptSpectators);
 			activity.listen(GamePlayerEvents.REMOVE, phase::removePlayer);
 			activity.listen(PlayerAttackEntityEvent.EVENT, phase::onPlayerAttackEntity);
 			activity.listen(PlayerDamageEvent.EVENT, phase::onPlayerDamage);
@@ -136,6 +139,11 @@ public class DownpourActivePhase {
 			}
 
 			index++;
+		}
+
+		for (ServerPlayerEntity player : this.gameSpace.getPlayers().spectators()) {
+			DownpourActivePhase.spawn(this.world, this.map.getBounds().center(), 0, player);
+			this.setSpectator(player);
 		}
 	}
 
@@ -268,10 +276,10 @@ public class DownpourActivePhase {
 		player.changeGameMode(GameMode.SPECTATOR);
 	}
 
-	private PlayerOfferResult offerPlayer(PlayerOffer offer) {
-		return offer.accept(this.world, this.map.getBounds().center()).and(() -> {
-			this.updateRoundsExperienceLevel(offer.player());
-			this.setSpectator(offer.player());
+	private JoinAcceptorResult onAcceptPlayers(JoinAcceptor acceptor) {
+		return acceptor.teleport(this.world, this.map.getBounds().center()).thenRunForEach(player -> {
+			this.updateRoundsExperienceLevel(player);
+			this.setSpectator(player);
 		});
 	}
 
@@ -313,7 +321,7 @@ public class DownpourActivePhase {
 		}
 	}
 
-	private ActionResult onPlayerAttackEntity(ServerPlayerEntity attacker, Hand hand, Entity attacked, EntityHitResult hitResult) {
+	private EventResult onPlayerAttackEntity(ServerPlayerEntity attacker, Hand hand, Entity attacked, EntityHitResult hitResult) {
 		if (!this.isGameEnding() && attacker != attacked && this.players.contains(PlayerRef.of(attacker)) && !this.singleplayer && this.statistics != null) {
 			ServerPlayerEntity attackedPlayer = (ServerPlayerEntity) attacked;
 			if (this.players.contains(PlayerRef.of(attackedPlayer))) {
@@ -321,23 +329,23 @@ public class DownpourActivePhase {
 			}
 		}
 
-		return ActionResult.PASS;
+		return EventResult.PASS;
 	}
 
-	private ActionResult onPlayerDamage(ServerPlayerEntity player, DamageSource source, float amount) {
-		return this.rounds >= this.config.getNoKnockbackRounds() ? ActionResult.SUCCESS : ActionResult.FAIL;
+	private EventResult onPlayerDamage(ServerPlayerEntity player, DamageSource source, float amount) {
+		return this.rounds >= this.config.getNoKnockbackRounds() ? EventResult.ALLOW : EventResult.DENY;
 	}
 
-	private ActionResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
+	private EventResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
 		if (!this.eliminate(player, true)) {
 			DownpourActivePhase.spawnAtCenter(this.world, this.map, player);
 		}
-		return ActionResult.FAIL;
+		return EventResult.DENY;
 	}
 
 	public static void spawn(ServerWorld world, Vec3d pos, float yaw, ServerPlayerEntity player) {
 		player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, StatusEffectInstance.INFINITE, 127, true, false));
-		player.teleport(world, pos.getX(), pos.getY(), pos.getZ(), yaw, 0);
+		player.teleport(world, pos.getX(), pos.getY(), pos.getZ(), Set.of(), yaw, 0, true);
 	}
 
 	public static void spawnAtCenter(ServerWorld world, DownpourMap map, ServerPlayerEntity player) {

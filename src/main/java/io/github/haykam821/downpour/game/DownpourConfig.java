@@ -3,6 +3,7 @@ package io.github.haykam821.downpour.game;
 import java.util.Optional;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import io.github.haykam821.downpour.game.map.DownpourMapConfig;
@@ -11,15 +12,15 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.intprovider.ConstantIntProvider;
 import net.minecraft.util.math.intprovider.IntProvider;
-import xyz.nucleoid.plasmid.game.GameSpace;
-import xyz.nucleoid.plasmid.game.common.config.PlayerConfig;
-import xyz.nucleoid.plasmid.game.stats.GameStatisticBundle;
+import xyz.nucleoid.plasmid.api.game.GameSpace;
+import xyz.nucleoid.plasmid.api.game.common.config.WaitingLobbyConfig;
+import xyz.nucleoid.plasmid.api.game.stats.GameStatisticBundle;
 
 public class DownpourConfig {
-	public static final Codec<DownpourConfig> CODEC = RecordCodecBuilder.create(instance -> {
+	public static final MapCodec<DownpourConfig> CODEC = RecordCodecBuilder.mapCodec(instance -> {
 		return instance.group(
 			DownpourMapConfig.CODEC.fieldOf("map").forGetter(DownpourConfig::getMapConfig),
-			PlayerConfig.CODEC.fieldOf("players").forGetter(DownpourConfig::getPlayerConfig),
+			WaitingLobbyConfig.CODEC.fieldOf("players").forGetter(DownpourConfig::getPlayerConfig),
 			IntProvider.NON_NEGATIVE_CODEC.optionalFieldOf("ticks_until_close", ConstantIntProvider.create(SharedConstants.TICKS_PER_SECOND * 5)).forGetter(DownpourConfig::getTicksUntilClose),
 			SoundEvent.CODEC.optionalFieldOf("lock_sound", SoundEvents.BLOCK_NOTE_BLOCK_SNARE.value()).forGetter(DownpourConfig::getLockSound),
 			SoundEvent.CODEC.optionalFieldOf("unlock_sound", SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER).forGetter(DownpourConfig::getUnlockSound),
@@ -31,7 +32,7 @@ public class DownpourConfig {
 	});
 
 	private final DownpourMapConfig mapConfig;
-	private final PlayerConfig playerConfig;
+	private final WaitingLobbyConfig playerConfig;
 	private final IntProvider ticksUntilClose;
 	private final SoundEvent lockSound;
 	private final SoundEvent unlockSound;
@@ -40,7 +41,7 @@ public class DownpourConfig {
 	private final int noKnockbackRounds;
 	private final Optional<String> statisticBundleNamespace;
 
-	public DownpourConfig(DownpourMapConfig mapConfig, PlayerConfig playerConfig, IntProvider ticksUntilClose, SoundEvent lockSound, SoundEvent unlockSound, int lockTime, int unlockTime, int noKnockbackRounds, Optional<String> statisticBundleNamespace) {
+	public DownpourConfig(DownpourMapConfig mapConfig, WaitingLobbyConfig playerConfig, IntProvider ticksUntilClose, SoundEvent lockSound, SoundEvent unlockSound, int lockTime, int unlockTime, int noKnockbackRounds, Optional<String> statisticBundleNamespace) {
 		this.mapConfig = mapConfig;
 		this.playerConfig = playerConfig;
 		this.ticksUntilClose = ticksUntilClose;
@@ -56,7 +57,7 @@ public class DownpourConfig {
 		return this.mapConfig;
 	}
 
-	public PlayerConfig getPlayerConfig() {
+	public WaitingLobbyConfig getPlayerConfig() {
 		return this.playerConfig;
 	}
 

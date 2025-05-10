@@ -4,8 +4,8 @@ import io.github.haykam821.downpour.game.phase.DownpourActivePhase;
 import net.minecraft.entity.boss.BossBar;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import xyz.nucleoid.plasmid.game.common.GlobalWidgets;
-import xyz.nucleoid.plasmid.game.common.widget.BossBarWidget;
+import xyz.nucleoid.plasmid.api.game.common.GlobalWidgets;
+import xyz.nucleoid.plasmid.api.game.common.widget.BossBarWidget;
 
 public class DownpourTimerBar {
 	private static final Text TITLE = Text.translatable("gameType.downpour.downpour").formatted(Formatting.AQUA);
