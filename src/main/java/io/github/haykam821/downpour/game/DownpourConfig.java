@@ -8,10 +8,11 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import io.github.haykam821.downpour.game.map.DownpourMapConfig;
 import net.minecraft.SharedConstants;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.math.intprovider.ConstantIntProvider;
-import net.minecraft.util.math.intprovider.IntProvider;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.util.valueproviders.IntProvider;
+import net.minecraft.util.valueproviders.IntProviders;
 import xyz.nucleoid.plasmid.api.game.GameSpace;
 import xyz.nucleoid.plasmid.api.game.common.config.WaitingLobbyConfig;
 import xyz.nucleoid.plasmid.api.game.stats.GameStatisticBundle;
@@ -21,9 +22,9 @@ public class DownpourConfig {
 		return instance.group(
 			DownpourMapConfig.CODEC.fieldOf("map").forGetter(DownpourConfig::getMapConfig),
 			WaitingLobbyConfig.CODEC.fieldOf("players").forGetter(DownpourConfig::getPlayerConfig),
-			IntProvider.NON_NEGATIVE_CODEC.optionalFieldOf("ticks_until_close", ConstantIntProvider.create(SharedConstants.TICKS_PER_SECOND * 5)).forGetter(DownpourConfig::getTicksUntilClose),
-			SoundEvent.CODEC.optionalFieldOf("lock_sound", SoundEvents.BLOCK_NOTE_BLOCK_SNARE.value()).forGetter(DownpourConfig::getLockSound),
-			SoundEvent.CODEC.optionalFieldOf("unlock_sound", SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER).forGetter(DownpourConfig::getUnlockSound),
+			IntProviders.NON_NEGATIVE_CODEC.optionalFieldOf("ticks_until_close", ConstantInt.of(SharedConstants.TICKS_PER_SECOND * 5)).forGetter(DownpourConfig::getTicksUntilClose),
+			SoundEvent.DIRECT_CODEC.optionalFieldOf("lock_sound", SoundEvents.NOTE_BLOCK_SNARE.value()).forGetter(DownpourConfig::getLockSound),
+			SoundEvent.DIRECT_CODEC.optionalFieldOf("unlock_sound", SoundEvents.LIGHTNING_BOLT_THUNDER).forGetter(DownpourConfig::getUnlockSound),
 			Codec.INT.optionalFieldOf("lock_time", 20 * 7).forGetter(DownpourConfig::getLockTime),
 			Codec.INT.optionalFieldOf("unlock_time", 20 * 2).forGetter(DownpourConfig::getUnlockTime),
 			Codec.INT.optionalFieldOf("no_knockback_rounds", 2).forGetter(DownpourConfig::getNoKnockbackRounds),

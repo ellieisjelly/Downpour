@@ -3,19 +3,19 @@ package io.github.haykam821.downpour.game.map;
 import java.util.Iterator;
 
 import io.github.haykam821.downpour.game.DownpourConfig;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.biome.BiomeKeys;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.biome.Biomes;
 import xyz.nucleoid.map_templates.BlockBounds;
 import xyz.nucleoid.map_templates.MapTemplate;
 
 public class DownpourMapBuilder {
-	private static final BlockState FLOOR = Blocks.COARSE_DIRT.getDefaultState();
-	private static final BlockState FLOOR_OUTLINE = Blocks.DARK_OAK_PLANKS.getDefaultState();
-	private static final BlockState WALL = Blocks.ANDESITE_WALL.getDefaultState();
-	private static final BlockState WALL_TOP = Blocks.SPRUCE_SLAB.getDefaultState();
-	private static final BlockState BARRIER = Blocks.BARRIER.getDefaultState();
+	private static final BlockState FLOOR = Blocks.COARSE_DIRT.defaultBlockState();
+	private static final BlockState FLOOR_OUTLINE = Blocks.DARK_OAK_PLANKS.defaultBlockState();
+	private static final BlockState WALL = Blocks.ANDESITE_WALL.defaultBlockState();
+	private static final BlockState WALL_TOP = Blocks.SPRUCE_SLAB.defaultBlockState();
+	private static final BlockState BARRIER = Blocks.BARRIER.defaultBlockState();
 
 	private final DownpourConfig config;
 
@@ -28,9 +28,9 @@ public class DownpourMapBuilder {
 		DownpourMapConfig mapConfig = this.config.getMapConfig();
 
 		// Must be a biome that allows for rain
-		template.setBiome(BiomeKeys.PLAINS);
+		template.setBiome(Biomes.PLAINS);
 
-		BlockBounds bounds = BlockBounds.of(BlockPos.ORIGIN, new BlockPos(mapConfig.getX() + 1, 4, mapConfig.getZ() + 1));
+		BlockBounds bounds = BlockBounds.of(BlockPos.ZERO, new BlockPos(mapConfig.getX() + 1, 4, mapConfig.getZ() + 1));
 		this.build(bounds, template, mapConfig);
 
 		BlockBounds shelterBounds = BlockBounds.of(new BlockPos(5, 1, 5), new BlockPos(mapConfig.getX() - 4, 1, mapConfig.getZ() - 4));

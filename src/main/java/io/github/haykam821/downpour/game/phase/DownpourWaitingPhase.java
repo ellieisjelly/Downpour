@@ -3,11 +3,11 @@ package io.github.haykam821.downpour.game.phase;
 import io.github.haykam821.downpour.game.DownpourConfig;
 import io.github.haykam821.downpour.game.map.DownpourMap;
 import io.github.haykam821.downpour.game.map.DownpourMapBuilder;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.GameMode;
-import xyz.nucleoid.fantasy.RuntimeWorldConfig;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.GameType;
+import xyz.nucleoid.fantasy.RuntimeLevelConfig;
 import xyz.nucleoid.plasmid.api.game.GameOpenContext;
 import xyz.nucleoid.plasmid.api.game.GameOpenProcedure;
 import xyz.nucleoid.plasmid.api.game.GameResult;
@@ -24,13 +24,13 @@ import xyz.nucleoid.stimuli.event.player.PlayerDeathEvent;
 
 public class DownpourWaitingPhase {
 	private final GameSpace gameSpace;
-	private final ServerWorld world;
+	private final ServerLevel level;
 	private final DownpourMap map;
 	private final DownpourConfig config;
 
-	public DownpourWaitingPhase(GameSpace gameSpace, ServerWorld world, DownpourMap map, DownpourConfig config) {
+	public DownpourWaitingPhase(GameSpace gameSpace, ServerLevel level, DownpourMap map, DownpourConfig config) {
 		this.gameSpace = gameSpace;
-		this.world = world;
+		this.level = level;
 		this.map = map;
 		this.config = config;
 	}
@@ -39,11 +39,11 @@ public class DownpourWaitingPhase {
 		DownpourMapBuilder mapBuilder = new DownpourMapBuilder(context.config());
 		DownpourMap map = mapBuilder.create();
 
-		RuntimeWorldConfig worldConfig = new RuntimeWorldConfig()
+		RuntimeLevelConfig levelConfig = new RuntimeLevelConfig()
 			.setGenerator(map.createGenerator(context.server()));
 
-		return context.openWithWorld(worldConfig, (activity, world) -> {
-			DownpourWaitingPhase phase = new DownpourWaitingPhase(activity.getGameSpace(), world, map, context.config());
+		return context.openWithLevel(levelConfig, (activity, level) -> {
+			DownpourWaitingPhase phase = new DownpourWaitingPhase(activity.getGameSpace(), level, map, context.config());
 			GameWaitingLobby.addTo(activity, context.config().getPlayerConfig());
 
 			DownpourActivePhase.setRules(activity);
@@ -58,18 +58,18 @@ public class DownpourWaitingPhase {
 	}
 
 	private JoinAcceptorResult onAcceptPlayers(JoinAcceptor acceptor) {
-		return acceptor.teleport(this.world, DownpourActivePhase.getCenterSpawnPos(this.map)).thenRunForEach(player -> {
-			player.changeGameMode(GameMode.ADVENTURE);
+		return acceptor.teleport(this.level, DownpourActivePhase.getCenterSpawnPos(this.map)).thenRunForEach(player -> {
+			player.setGameMode(GameType.ADVENTURE);
 		});
 	}
 
 	private GameResult requestStart() {
-		DownpourActivePhase.open(this.gameSpace, this.world, this.map, this.config);
+		DownpourActivePhase.open(this.gameSpace, this.level, this.map, this.config);
 		return GameResult.ok();
 	}
 
-	private EventResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
-		DownpourActivePhase.spawnAtCenter(this.world, this.map, player);
+	private EventResult onPlayerDeath(ServerPlayer player, DamageSource source) {
+		DownpourActivePhase.spawnAtCenter(this.level, this.map, player);
 		return EventResult.DENY;
 	}
 }

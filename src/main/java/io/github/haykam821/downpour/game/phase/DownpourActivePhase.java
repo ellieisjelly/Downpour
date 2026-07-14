@@ -12,20 +12,22 @@ import io.github.haykam821.downpour.game.DownpourTimerBar;
 import io.github.haykam821.downpour.game.Shelter;
 import io.github.haykam821.downpour.game.map.DownpourMap;
 import io.github.haykam821.downpour.game.map.DownpourMapConfig;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.GameMode;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.GameType;
 import xyz.nucleoid.plasmid.api.game.GameActivity;
 import xyz.nucleoid.plasmid.api.game.GameCloseReason;
 import xyz.nucleoid.plasmid.api.game.GameSpace;
@@ -46,7 +48,7 @@ import xyz.nucleoid.stimuli.event.player.PlayerDamageEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerDeathEvent;
 
 public class DownpourActivePhase {
-	private final ServerWorld world;
+	private final ServerLevel level;
 	private final GameSpace gameSpace;
 	private final DownpourMap map;
 	private final DownpourConfig config;
@@ -60,8 +62,8 @@ public class DownpourActivePhase {
 	private int ticksUntilClose = -1;
 	private Shelter shelter;
 
-	public DownpourActivePhase(GameSpace gameSpace, ServerWorld world, DownpourMap map, DownpourConfig config, List<PlayerRef> players, GlobalWidgets widgets) {
-		this.world = world;
+	public DownpourActivePhase(GameSpace gameSpace, ServerLevel level, DownpourMap map, DownpourConfig config, List<PlayerRef> players, GlobalWidgets widgets) {
+		this.level = level;
 		this.gameSpace = gameSpace;
 		this.map = map;
 		this.config = config;
@@ -83,14 +85,14 @@ public class DownpourActivePhase {
 		activity.allow(GameRuleType.PVP);
 	}
 
-	public static void open(GameSpace gameSpace, ServerWorld world, DownpourMap map, DownpourConfig config) {
+	public static void open(GameSpace gameSpace, ServerLevel level, DownpourMap map, DownpourConfig config) {
 		gameSpace.setActivity(activity -> {
 			GlobalWidgets widgets = GlobalWidgets.addTo(activity);
 
 			List<PlayerRef> players = gameSpace.getPlayers().participants().stream().map(PlayerRef::of).collect(Collectors.toList());
 			Collections.shuffle(players);
 
-			DownpourActivePhase phase = new DownpourActivePhase(gameSpace, world, map, config, players, widgets);
+			DownpourActivePhase phase = new DownpourActivePhase(gameSpace, level, map, config, players, widgets);
 
 			DownpourActivePhase.setRules(activity);
 
@@ -107,7 +109,7 @@ public class DownpourActivePhase {
 	}
 
 	private void enable() {
-		this.world.setWeather(0, 0, true, false);
+		this.level.getWeatherData().setRaining(true);
 
 		int index = 0;
 		this.singleplayer = this.players.size() == 1;
@@ -115,34 +117,34 @@ public class DownpourActivePhase {
 		DownpourMapConfig mapConfig = this.config.getMapConfig();
 		int spawnRadius = (Math.min(mapConfig.getX(), mapConfig.getZ()) - 4) / 2;
 
-		Vec3d center = DownpourActivePhase.getCenterSpawnPos(this.map);
+		Vec3 center = DownpourActivePhase.getCenterSpawnPos(this.map);
 
  		for (PlayerRef playerRef : this.players) {
-			ServerPlayerEntity player = playerRef.getEntity(this.world);
+			ServerPlayer player = playerRef.getEntity(this.level);
 
 			if (player != null) {
 				this.updateRoundsExperienceLevel(player);
-				player.changeGameMode(GameMode.ADVENTURE);
+				player.setGameMode(GameType.ADVENTURE);
 
 				if (!this.singleplayer && this.statistics != null) {
 					this.statistics.forPlayer(player).increment(StatisticKeys.GAMES_PLAYED, 1);
 				}
 
 				double theta = ((double) index / this.players.size()) * 2 * Math.PI;
-				float yaw = (float) theta * MathHelper.DEGREES_PER_RADIAN + 90;
+				float yaw = (float) theta * Mth.RAD_TO_DEG + 90;
 
-				double x = center.getX() + Math.cos(theta) * spawnRadius;
-				double z = center.getZ() + Math.sin(theta) * spawnRadius;
+				double x = center.x() + Math.cos(theta) * spawnRadius;
+				double z = center.z() + Math.sin(theta) * spawnRadius;
 
-				Vec3d spawnPos = new Vec3d(x, center.getY(), z);
-				DownpourActivePhase.spawn(this.world, spawnPos, yaw, player);
+				Vec3 spawnPos = new Vec3(x, center.y(), z);
+				DownpourActivePhase.spawn(this.level, spawnPos, yaw, player);
 			}
 
 			index++;
 		}
 
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers().spectators()) {
-			DownpourActivePhase.spawn(this.world, this.map.getBounds().center(), 0, player);
+		for (ServerPlayer player : this.gameSpace.getPlayers().spectators()) {
+			DownpourActivePhase.spawn(this.level, this.map.getBounds().center(), 0, player);
 			this.setSpectator(player);
 		}
 	}
@@ -151,26 +153,26 @@ public class DownpourActivePhase {
 		BlockPos minPos = this.map.getShelterBounds().min();
 		BlockPos maxPos = this.map.getShelterBounds().max();
 
-		int x = this.world.getRandom().nextInt(maxPos.getX() + 1 - minPos.getX()) + minPos.getX();
-		int z = this.world.getRandom().nextInt(maxPos.getZ() + 1 - minPos.getZ()) + minPos.getZ();
+		int x = this.level.getRandom().nextInt(maxPos.getX() + 1 - minPos.getX()) + minPos.getX();
+		int z = this.level.getRandom().nextInt(maxPos.getZ() + 1 - minPos.getZ()) + minPos.getZ();
 		int size = Math.max(0, Math.min(4, 4 - this.rounds / 2));
 
 		this.shelter = new Shelter(new BlockPos(x, this.map.getShelterBounds().min().getY(), z), size, false);
-		this.shelter.build(this.world);
+		this.shelter.build(this.level);
 	}
 
-	private Text getKnockbackEnabledText() {
-		return Text.translatable("text.downpour.knockback_enabled").formatted(Formatting.RED);
+	private Component getKnockbackEnabledText() {
+		return Component.translatable("text.downpour.knockback_enabled").withStyle(ChatFormatting.RED);
 	}
 
-	private void updateRoundsExperienceLevel(ServerPlayerEntity player) {
-		player.setExperienceLevel(this.rounds + 1);
+	private void updateRoundsExperienceLevel(ServerPlayer player) {
+		player.setExperienceLevels(this.rounds + 1);
 	}
 
 	private void addRounds(int rounds) {
 		this.rounds += rounds;
 
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers()) {
+		for (ServerPlayer player : this.gameSpace.getPlayers()) {
 			this.updateRoundsExperienceLevel(player);
 		}
 
@@ -199,7 +201,7 @@ public class DownpourActivePhase {
 		if (this.ticksUntilSwitch < 0) {
 			if (this.shelter.isLocked()) {
 				// Unlock
-				this.shelter.clear(this.world);
+				this.shelter.clear(this.level);
 				this.createShelter();
 
 				this.addRounds(1);
@@ -212,7 +214,7 @@ public class DownpourActivePhase {
 			} else {
 				// Lock
 				this.shelter.setLocked(true);
-				this.shelter.build(this.world);
+				this.shelter.build(this.level);
 
 				this.gameSpace.getPlayers().playSound(this.config.getLockSound());
 				this.ticksUntilSwitch = this.config.getUnlockTime();
@@ -223,11 +225,11 @@ public class DownpourActivePhase {
 		Iterator<PlayerRef> playerIterator = this.players.iterator();
 		while (playerIterator.hasNext()) {
 			PlayerRef playerRef = playerIterator.next();
-			playerRef.ifOnline(this.world, player -> {
-				if (!this.map.getBounds().contains(player.getBlockPos())) {
+			playerRef.ifOnline(this.level, player -> {
+				if (!this.map.getBounds().contains(player.blockPosition())) {
 					this.eliminate(player, ".out_of_bounds", false);
 					playerIterator.remove();
-				} else if (this.shelter != null && this.shelter.isLocked() && !this.shelter.getBox().contains(player.getBlockPos())) {
+				} else if (this.shelter != null && this.shelter.isLocked() && !this.shelter.getBox().isInside(player.blockPosition())) {
 					this.eliminate(player, ".out_of_shelter", false);
 					playerIterator.remove();
 				}
@@ -238,23 +240,23 @@ public class DownpourActivePhase {
 		if (this.players.size() < 2) {
 			if (this.players.size() == 1 && this.singleplayer) return;
 			
-			ServerPlayerEntity winner = this.getWinner();
+			ServerPlayer winner = this.getWinner();
 			if (winner != null) {
 				this.applyPlayerFinishStatistics(winner, StatisticKeys.GAMES_WON);
 			}
 
-			Text endingMessage = this.getEndingMessage(winner);
+			Component endingMessage = this.getEndingMessage(winner);
 			this.gameSpace.getPlayers().sendMessage(endingMessage);
-
-			this.ticksUntilClose = this.config.getTicksUntilClose().get(this.world.getRandom());
+			this.gameSpace.getPlayers().playSound(SoundEvents.PLAYER_LEVELUP, SoundSource.UI, 1, 1);
+			this.ticksUntilClose = this.config.getTicksUntilClose().sample(this.level.getRandom());
 		}
 	}
 
-	private ServerPlayerEntity getWinner() {
+	private ServerPlayer getWinner() {
 		if (this.players.size() == 1) {
 			PlayerRef winnerRef = this.players.iterator().next();
-			if (winnerRef.isOnline(this.world)) {
-				return winnerRef.getEntity(this.world);
+			if (winnerRef.isOnline(this.level)) {
+				return winnerRef.getEntity(this.level);
 			}
 		}
 		return null;
@@ -264,30 +266,30 @@ public class DownpourActivePhase {
 		return this.ticksUntilClose >= 0;
 	}
 
-	private Text getEndingMessage(ServerPlayerEntity winner) {
+	private Component getEndingMessage(ServerPlayer winner) {
 		if (winner == null) {
-			return Text.translatable("text.downpour.no_winners", this.rounds).formatted(Formatting.GOLD);
+			return Component.translatable("text.downpour.no_winners", this.rounds).withStyle(ChatFormatting.GOLD);
 		} else {
-			return Text.translatable("text.downpour.win", winner.getDisplayName(), this.rounds).formatted(Formatting.GOLD);
+			return Component.translatable("text.downpour.win", winner.getDisplayName(), this.rounds).withStyle(ChatFormatting.GOLD);
 		}
 	}
 
-	private void setSpectator(ServerPlayerEntity player) {
-		player.changeGameMode(GameMode.SPECTATOR);
+	private void setSpectator(ServerPlayer player) {
+		player.setGameMode(GameType.SPECTATOR);
 	}
 
 	private JoinAcceptorResult onAcceptPlayers(JoinAcceptor acceptor) {
-		return acceptor.teleport(this.world, this.map.getBounds().center()).thenRunForEach(player -> {
+		return acceptor.teleport(this.level, this.map.getBounds().center()).thenRunForEach(player -> {
 			this.updateRoundsExperienceLevel(player);
 			this.setSpectator(player);
 		});
 	}
 
-	private void removePlayer(ServerPlayerEntity player) {
+	private void removePlayer(ServerPlayer player) {
 		this.eliminate(player, true);
 	}
 
-	private boolean eliminate(ServerPlayerEntity eliminatedPlayer, String suffix, boolean remove) {
+	private boolean eliminate(ServerPlayer eliminatedPlayer, String suffix, boolean remove) {
 		if (this.isGameEnding()) return false;
 
 		PlayerRef eliminatedRef = PlayerRef.of(eliminatedPlayer);
@@ -295,9 +297,9 @@ public class DownpourActivePhase {
 			return false;
 		}
 
-		Text message = Text.translatable("text.downpour.eliminated" + suffix, eliminatedPlayer.getDisplayName()).formatted(Formatting.RED);
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers()) {
-			player.sendMessage(message, false);
+		Component message = Component.translatable("text.downpour.eliminated" + suffix, eliminatedPlayer.getDisplayName()).withStyle(ChatFormatting.RED);
+		for (ServerPlayer player : this.gameSpace.getPlayers()) {
+			player.sendSystemMessage(message, false);
 		}
 
 		if (remove) {
@@ -310,20 +312,20 @@ public class DownpourActivePhase {
 		return true;
 	}
 
-	private boolean eliminate(ServerPlayerEntity eliminatedPlayer, boolean remove) {
+	private boolean eliminate(ServerPlayer eliminatedPlayer, boolean remove) {
 		return this.eliminate(eliminatedPlayer, "", remove);
 	}
 
-	public void applyPlayerFinishStatistics(ServerPlayerEntity player, StatisticKey<Integer> finishTypeKey) {
+	public void applyPlayerFinishStatistics(ServerPlayer player, StatisticKey<Integer> finishTypeKey) {
 		if (!this.singleplayer && this.statistics != null) {
 			this.statistics.forPlayer(player).increment(finishTypeKey, 1);
 			this.statistics.forPlayer(player).set(StatisticKeys.LONGEST_TIME, this.ticksElapsed);
 		}
 	}
 
-	private EventResult onPlayerAttackEntity(ServerPlayerEntity attacker, Hand hand, Entity attacked, EntityHitResult hitResult) {
+	private EventResult onPlayerAttackEntity(ServerPlayer attacker, InteractionHand hand, Entity attacked, EntityHitResult hitResult) {
 		if (!this.isGameEnding() && attacker != attacked && this.players.contains(PlayerRef.of(attacker)) && !this.singleplayer && this.statistics != null) {
-			ServerPlayerEntity attackedPlayer = (ServerPlayerEntity) attacked;
+			ServerPlayer attackedPlayer = (ServerPlayer) attacked;
 			if (this.players.contains(PlayerRef.of(attackedPlayer))) {
 				this.statistics.forPlayer(attacker).increment(Main.PLAYERS_PUNCHED, 1);
 			}
@@ -332,30 +334,30 @@ public class DownpourActivePhase {
 		return EventResult.PASS;
 	}
 
-	private EventResult onPlayerDamage(ServerPlayerEntity player, DamageSource source, float amount) {
+	private EventResult onPlayerDamage(ServerPlayer player, DamageSource source, float amount) {
 		return this.rounds >= this.config.getNoKnockbackRounds() ? EventResult.ALLOW : EventResult.DENY;
 	}
 
-	private EventResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
+	private EventResult onPlayerDeath(ServerPlayer player, DamageSource source) {
 		if (!this.eliminate(player, true)) {
-			DownpourActivePhase.spawnAtCenter(this.world, this.map, player);
+			DownpourActivePhase.spawnAtCenter(this.level, this.map, player);
 		}
 		return EventResult.DENY;
 	}
 
-	public static void spawn(ServerWorld world, Vec3d pos, float yaw, ServerPlayerEntity player) {
-		player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, StatusEffectInstance.INFINITE, 127, true, false));
-		player.teleport(world, pos.getX(), pos.getY(), pos.getZ(), Set.of(), yaw, 0, true);
+	public static void spawn(ServerLevel world, Vec3 pos, float yaw, ServerPlayer player) {
+		player.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, MobEffectInstance.INFINITE_DURATION, 127, true, false));
+		player.teleportTo(world, pos.x(), pos.y(), pos.z(), Set.of(), yaw, 0, true);
 	}
 
-	public static void spawnAtCenter(ServerWorld world, DownpourMap map, ServerPlayerEntity player) {
-		Vec3d pos = DownpourActivePhase.getCenterSpawnPos(map);
+	public static void spawnAtCenter(ServerLevel world, DownpourMap map, ServerPlayer player) {
+		Vec3 pos = DownpourActivePhase.getCenterSpawnPos(map);
 		DownpourActivePhase.spawn(world, pos, 0, player);
 	}
 
-	public static Vec3d getCenterSpawnPos(DownpourMap map) {
-		Vec3d center = map.getBounds().center();
-		return new Vec3d(center.getX(), map.getShelterBounds().min().getY(), center.getZ());
+	public static Vec3 getCenterSpawnPos(DownpourMap map) {
+		Vec3 center = map.getBounds().center();
+		return new Vec3(center.x(), map.getShelterBounds().min().getY(), center.z());
 	}
 
 	public float getTimerBarPercent() {
